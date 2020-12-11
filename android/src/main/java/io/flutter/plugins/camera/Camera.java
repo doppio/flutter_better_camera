@@ -57,11 +57,6 @@ public class Camera {
   private static final int STATE_PREVIEW = 0;
 
   /**
-   * Camera state: Waiting for the focus to be locked.
-   */
-  private static final int STATE_WAITING_LOCK = 1;
-
-  /**
    * Camera state: Waiting for the exposure to be precapture state.
    */
   private static final int STATE_WAITING_PRECAPTURE = 2;
@@ -339,11 +334,9 @@ public class Camera {
           extends CameraCaptureSession.CaptureCallback {
 
     static final int STATE_PREVIEW = 0;
-    static final int STATE_LOCKING = 1;
-    static final int STATE_LOCKED = 2;
-    static final int STATE_PRECAPTURE = 3;
-    static final int STATE_WAITING = 4;
-    static final int STATE_CAPTURING = 5;
+    static final int STATE_PRECAPTURE = 1;
+    static final int STATE_WAITING = 2;
+    static final int STATE_CAPTURING = 3;
 
     private int mState;
     public String filePath;
@@ -371,24 +364,6 @@ public class Camera {
 
     private void process(@NonNull CaptureResult result) {
       switch (mState) {
-        case STATE_LOCKING: {
-          Integer af = result.get(CaptureResult.CONTROL_AF_STATE);
-          if (af == null) {
-            break;
-          }
-          if (af == CaptureResult.CONTROL_AF_STATE_FOCUSED_LOCKED ||
-                  af == CaptureResult.CONTROL_AF_STATE_NOT_FOCUSED_LOCKED) {
-            Integer ae = result.get(CaptureResult.CONTROL_AE_STATE);
-            if (ae == null || ae == CaptureResult.CONTROL_AE_STATE_CONVERGED) {
-              setState(STATE_CAPTURING);
-              onReady();
-            } else {
-              setState(STATE_LOCKED);
-              onPrecaptureRequired();
-            }
-          }
-          break;
-        }
         case STATE_PRECAPTURE: {
           Integer ae = result.get(CaptureResult.CONTROL_AE_STATE);
           if (ae == null || ae == CaptureResult.CONTROL_AE_STATE_PRECAPTURE ||
@@ -457,60 +432,14 @@ public class Camera {
 
   };
 
-
-  /**
-   * Unlocks the auto-focus and restart camera preview. This is supposed to be called after
-   * capturing a still picture.
-   */
-  void unlockFocus() {
-    mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AF_TRIGGER,
-            CaptureRequest.CONTROL_AF_TRIGGER_CANCEL);
-    Log.d(TAG, "UNLOCK FOCUS");
-
-    try {
-      mCaptureSession.capture(mPreviewRequestBuilder.build(), mCaptureCallback, null);
-      updateAutoFocus();
-      updateFlash();
-        mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AF_TRIGGER,
-                CaptureRequest.CONTROL_AF_TRIGGER_IDLE);
-        mCaptureSession.setRepeatingRequest(mPreviewRequestBuilder.build(), mCaptureCallback,
-                null);
-        mCaptureCallback.setState(PictureCaptureCallback.STATE_PREVIEW);
-
-    } catch (CameraAccessException e) {
-      Log.e(TAG, "Failed to restart camera preview.", e);
-    }
-  }
-  /**
-   * Locks the focus as the first step for a still image capture.
-   */
-  private void lockFocus() {
-    Log.d(TAG, "lockFocus");
-
-    mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AF_TRIGGER,
-            CaptureRequest.CONTROL_AF_TRIGGER_START);
-    try {
-      mCaptureCallback.setState(PictureCaptureCallback.STATE_LOCKING);
-      mCaptureSession.capture(mPreviewRequestBuilder.build(), mCaptureCallback, null);
-    } catch (CameraAccessException e) {
-      Log.e(TAG, "Failed to lock focus.", e);
-    }
-  }
-
-
   public void takePicture(String filePath, @NonNull final Result result){
     mCaptureCallback.setFilePath(filePath);
     mCaptureCallback.setResult(result);
     Log.e(TAG, "takePicture");
 
-    if (mAutoFocus) {
-      Log.e(TAG, "takePicture-mAutoFocus");
-      lockFocus();
-    } else {
-      Log.e(TAG, "takePicture-noAutoFocus");
-      captureStillPicture(filePath,result);
-    }
+    captureStillPicture(filePath,result);
   }
+
   public void captureStillPicture(String filePath, @NonNull final Result result) {
     final File file = new File(filePath);
 
@@ -596,7 +525,6 @@ public class Camera {
                                              @NonNull CaptureRequest request,
                                              @NonNull TotalCaptureResult result) {
                 Log.d(TAG, "ONCAPTURECOMPLETED");
-                      unlockFocus();
               }
             @Override
             public void onCaptureFailed(
